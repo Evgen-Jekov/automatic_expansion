@@ -1,0 +1,9 @@
+# all dependencies that were used for the development of the project
+
+pandapower[all]
+pyscipopt
+numpy
+pandas
+matplotlib
+plotly
+pyvis
