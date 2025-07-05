@@ -1,6 +1,6 @@
 feature/network - Building and modifying a network (network_builder.py module)
 feature/measures - Implementation of measures (measures.py, measures for replacing lines, etc.)
-feature/scipo - Integration with SCIPO (scipo_optimizer.py)
+feature/scipo - use graph optimization (grapg_optimizer.py)
 feature/heuristics - Heuristics (ILS, Hill Climbing, etc.)
 feature/constraints - Constraint Checker (constraint_checker.py)
 feature/cost - Calculating the cost of solutions (cost_function.py)
