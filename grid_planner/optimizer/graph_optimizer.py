@@ -1,5 +1,5 @@
 """
-scipo_optimizer.py
+graph_optimizer.py
 
 Implementation of the discrete optimization problem via PySCIPOpt:
 - creation of binary variables (each measure is 0/1),
