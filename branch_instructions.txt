@@ -5,3 +5,4 @@ feature/heuristics - Heuristics (ILS, Hill Climbing, etc.)
 feature/constraints - Constraint Checker (constraint_checker.py)
 feature/cost - Calculating the cost of solutions (cost_function.py)
 feature/visualization - Network visualization before/after comparison
+feature/gui - GUI is the project
