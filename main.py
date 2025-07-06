@@ -9,3 +9,9 @@ Main entry to the project.
 Run:
 python main.py
 """
+
+from grid_planner.core.network_builder import create_network
+from pandapower.plotting import simple_plot
+
+net = create_network()
+simple_plot(net=net)
