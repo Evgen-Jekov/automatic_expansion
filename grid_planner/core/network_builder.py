@@ -5,101 +5,68 @@ Contains the create_initial_network() function, which returns the basic pandapow
 
 The network is created programmatically (without .json) to conveniently run simulations, change the structure and test algorithms.
 """
-
 import pandapower as pp
 import random
-import numpy as np
 
-
-def create_network(n_buses=200, n_lines=None, seed=None):
+def generate_network(n_buses=10, n_loads=4, n_gens=2, n_ext_grids=1, seed=None):
     if seed is not None:
         random.seed(seed)
-        np.random.seed(seed)
 
     net = pp.create_empty_network()
-    buses = []
 
-    for i in range(n_buses):
-        vn_kv = random.choice([20, 35, 110, 220])
-        bus = pp.create_bus(net, vn_kv=vn_kv, name=f"Bus {i}")
-        buses.append(bus)
+    buses = [pp.create_bus(net, vn_kv=20.0, name=f"Bus {i}") for i in range(n_buses)]
 
-    ext_bus = random.choice(buses)
-    pp.create_ext_grid(net, bus=ext_bus, vm_pu=1.02, name="Grid")
+    connected = set([buses[0]])
+    remaining = set(buses[1:])
+    while remaining:
+        from_bus = random.choice(list(connected))
+        to_bus = random.choice(list(remaining))
+        pp.create_line_from_parameters(net, from_bus, to_bus, length_km=2.0,
+                                       r_ohm_per_km=0.4, x_ohm_per_km=0.12,
+                                       c_nf_per_km=210, max_i_ka=0.25)
+        connected.add(to_bus)
+        remaining.remove(to_bus)
 
-    for _ in range(int(n_buses * 0.15)):
-        pp.create_sgen(net, bus=random.choice(buses), p_mw=random.uniform(5, 50), q_mvar=random.uniform(-5, 5))
+    for _ in range(max(0, n_buses // 2 - 1)):
+        from_bus, to_bus = random.sample(buses, 2)
+        if not any((net.line.from_bus[i] == from_bus and net.line.to_bus[i] == to_bus) or
+                   (net.line.from_bus[i] == to_bus and net.line.to_bus[i] == from_bus)
+                   for i in net.line.index):
+            pp.create_line_from_parameters(net, from_bus, to_bus, length_km=1.5,
+                                           r_ohm_per_km=0.4, x_ohm_per_km=0.12,
+                                           c_nf_per_km=210, max_i_ka=0.25)
 
-    for _ in range(int(n_buses * 0.3)):
-        pp.create_load(net, bus=random.choice(buses), p_mw=random.uniform(5, 100), q_mvar=random.uniform(0, 30))
+    ext_buses = random.sample(buses, min(n_ext_grids, len(buses)))
+    for bus in ext_buses:
+        pp.create_ext_grid(net, bus, vm_pu=1.02)
 
-    def add_min_spanning_tree(net, buses):
-        n = len(buses)
-        parent = [i for i in range(n)]
+    gen_candidates = [b for b in buses if b not in ext_buses]
+    random.shuffle(gen_candidates)
+    for i in range(min(n_gens, len(gen_candidates))):
+        p_mw = round(random.uniform(0.3, 1.5), 2)  # Типичные значения для распределённой генерации
+        min_p = round(p_mw * 0.2, 2)
+        max_p = round(p_mw * 1.2, 2)
+        cost = round(random.uniform(30, 80), 2)  # €/MWh — реальный диапазон в Германии
+        gen_idx = pp.create_gen(net, gen_candidates[i], p_mw=p_mw, vm_pu=1.01,
+                                min_p_mw=min_p, max_p_mw=max_p)
+        pp.create_poly_cost(net, gen_idx, 'gen', cp1_eur_per_mw=cost)
 
-        def find(u):
-            while parent[u] != u:
-                parent[u] = parent[parent[u]]
-                u = parent[u]
-            return u
+    load_buses = random.sample(buses, min(n_loads, len(buses)))
+    for bus in load_buses:
+        pp.create_load(net, bus,
+                       p_mw=round(random.uniform(0.1, 1.5), 2),
+                       q_mvar=round(random.uniform(0.02, 0.3), 2))
 
-        def union(u, v):
-            u_root = find(u)
-            v_root = find(v)
-            if u_root == v_root:
-                return False
-            parent[v_root] = u_root
-            return True
+    try:
+        pp.runpp(net, max_iteration=20, tolerance_mva=1e-6)
+    except pp.LoadflowNotConverged:
+        return None
 
-        edges = []
-        for i in range(n):
-            for j in range(i + 1, n):
-                weight = random.uniform(1, 10)
-                edges.append((i, j, weight))
-
-        edges.sort(key=lambda x: x[2])
-
-        tree_edges = []
-        for u, v, w in edges:
-            if union(u, v):
-                tree_edges.append((u, v))
-                if len(tree_edges) == n - 1:
-                    break
-
-        for u, v in tree_edges:
-            from_bus = buses[u]
-            to_bus = buses[v]
-            vn_kv = net.bus.loc[from_bus, "vn_kv"]
-            r = random.uniform(0.01, 0.1)
-            x = random.uniform(0.01, 0.08)
-            c = random.uniform(5, 20)
-            max_i = random.uniform(0.5, 2)
-            pp.create_line_from_parameters(
-                net, from_bus, to_bus, length_km=10,
-                r_ohm_per_km=r, x_ohm_per_km=x, c_nf_per_km=c, max_i_ka=max_i,
-                name=f"Line {u}-{v}"
-            )
-
-    add_min_spanning_tree(net, buses)
-
-    if n_lines is None:
-        n_lines = n_buses // 2
-
-    possible_pairs = [(i, j) for i in range(n_buses) for j in range(i + 1, n_buses)]
-    random.shuffle(possible_pairs)
-
-    for i in range(min(n_lines, len(possible_pairs))):
-        u, v = possible_pairs[i]
-        from_bus = buses[u]
-        to_bus = buses[v]
-        if not net.line[(net.line.from_bus == from_bus) & (net.line.to_bus == to_bus)].empty:
-            continue
-        vn_kv = net.bus.loc[from_bus, "vn_kv"]
-        pp.create_line_from_parameters(
-            net, from_bus, to_bus, length_km=random.uniform(1, 15),
-            r_ohm_per_km=random.uniform(0.01, 0.1), x_ohm_per_km=random.uniform(0.01, 0.08),
-            c_nf_per_km=random.uniform(5, 20), max_i_ka=random.uniform(0.5, 2),
-            name=f"Line {u}-{v}"
-        )
+    try:
+        pp.runopp(net)
+    except:
+        return None
 
     return net
+
+
